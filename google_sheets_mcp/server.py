@@ -42,10 +42,15 @@ def _get_credentials():
         from google_sheets_mcp.auth import google_token_store
 
         token_info = get_access_token()
+        logger.info(
+            "Auth context: token_info=%s, store_size=%d",
+            token_info is not None,
+            len(google_token_store),
+        )
         if token_info:
             google_creds = google_token_store.get(token_info.token)
             if google_creds:
-                logger.debug(
+                logger.info(
                     "Using OAuth credentials for user=%s",
                     google_creds.get("email", "unknown"),
                 )
@@ -57,16 +62,23 @@ def _get_credentials():
                     client_secret=os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET"),
                     scopes=SCOPES,
                 )
-    except Exception:
-        pass
+            else:
+                logger.warning(
+                    "MCP token found but no Google creds linked — user did not complete OAuth"
+                )
+        else:
+            logger.info("No MCP auth context — falling back to ADC")
+    except Exception as e:
+        logger.warning("Error checking auth context: %s", e)
 
     # Local mode: service account or ADC
     creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
     if creds_path:
-        logger.debug("Using service account credentials from %s", creds_path)
+        logger.info("Using service account credentials from %s", creds_path)
         return service_account.Credentials.from_service_account_file(
             creds_path, scopes=SCOPES
         )
+    logger.info("Using Application Default Credentials (Cloud Run SA)")
     creds, _ = google.auth.default(scopes=SCOPES)
     return creds
 
@@ -111,7 +123,9 @@ def _sheet_to_df(
         df = pd.DataFrame(data)
 
     for col in df.columns:
-        df[col] = pd.to_numeric(df[col], errors="ignore")
+        converted = pd.to_numeric(df[col], errors="coerce")
+        if not converted.isna().all():
+            df[col] = converted
     return df
 
 
@@ -119,6 +133,8 @@ def _df_to_json(df: pd.DataFrame, max_rows: int = 500) -> str:
     """Serialize a DataFrame to JSON, truncating if needed."""
     truncated = len(df) > max_rows
     out = df.head(max_rows)
+    # Replace NaN/inf with None for JSON compatibility
+    out = out.where(out.notna(), None)
     result = {
         "columns": list(out.columns),
         "shape": [len(df), len(df.columns)],
@@ -151,7 +167,7 @@ def _df_to_sheet(
             raise
 
     header = [list(df.columns)]
-    values = df.astype(str).replace("nan", "").values.tolist()
+    values = df.fillna("").astype(str).values.tolist()
     ws.update("A1", header + values)
     return {
         "status": "ok",
@@ -1156,7 +1172,11 @@ def fill_missing(
         if col not in df.columns:
             continue
         if method == "value":
-            df[col] = df[col].fillna(pd.to_numeric(value, errors="ignore"))
+            try:
+                fill_val = float(value)
+            except (ValueError, TypeError):
+                fill_val = value
+            df[col] = df[col].fillna(fill_val)
         elif method == "ffill":
             df[col] = df[col].ffill()
         elif method == "bfill":
@@ -1327,7 +1347,7 @@ def time_series_resample(
     worksheet: str,
     date_column: str,
     value_columns: str,
-    freq: str = "M",
+    freq: str = "ME",
     aggfunc: str = "sum",
     header_row: int = 1,
     write_to_worksheet: str | None = None,
@@ -1339,11 +1359,15 @@ def time_series_resample(
         worksheet: Worksheet name.
         date_column: Column containing dates.
         value_columns: Column(s) to aggregate. Comma-separated.
-        freq: Frequency — D (daily), W (weekly), M (monthly), Q (quarterly), Y (yearly).
+        freq: Frequency — D (daily), W (weekly), ME (monthly), QE (quarterly), YE (yearly).
         aggfunc: Aggregation — sum, mean, count, min, max (default: sum).
         header_row: Row number containing headers (1-indexed, default: 1).
         write_to_worksheet: If provided, writes result to this worksheet tab.
     """
+    # Pandas 3.0: translate legacy freq aliases
+    freq_map = {"M": "ME", "Q": "QE", "Y": "YE", "BM": "BME", "BQ": "BQE", "BY": "BYE"}
+    freq = freq_map.get(freq, freq)
+
     df = _sheet_to_df(spreadsheet_id, worksheet, header_row=header_row)
     df[date_column] = pd.to_datetime(df[date_column], errors="coerce")
     df = df.dropna(subset=[date_column]).set_index(date_column)

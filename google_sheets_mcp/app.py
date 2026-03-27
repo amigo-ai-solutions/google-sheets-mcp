@@ -10,6 +10,7 @@ import logging
 import os
 
 import uvicorn
+from mcp.server.auth.provider import ProviderTokenVerifier
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.requests import Request
@@ -54,6 +55,7 @@ def create_app():
     # Wire up OAuth provider
     provider = GoogleOAuthProvider()
     mcp._auth_server_provider = provider
+    mcp._token_verifier = ProviderTokenVerifier(provider)
     mcp.settings.auth = AuthSettings(
         issuer_url=base_url,
         resource_server_url=base_url,
@@ -63,7 +65,7 @@ def create_app():
             default_scopes=["sheets", "drive"],
         ),
         revocation_options=None,
-        required_scopes=[],
+        required_scopes=None,
     )
 
     # Disable DNS rebinding protection (Cloud Run handles this at infra level)
