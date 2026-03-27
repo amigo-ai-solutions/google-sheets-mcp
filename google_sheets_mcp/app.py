@@ -11,6 +11,7 @@ import os
 
 import uvicorn
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions
+from mcp.server.transport_security import TransportSecuritySettings
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
@@ -63,6 +64,11 @@ def create_app():
         ),
         revocation_options=None,
         required_scopes=[],
+    )
+
+    # Disable DNS rebinding protection (Cloud Run handles this at infra level)
+    mcp.settings.transport_security = TransportSecuritySettings(
+        enable_dns_rebinding_protection=False,
     )
 
     # Register Google OAuth callback as custom route
