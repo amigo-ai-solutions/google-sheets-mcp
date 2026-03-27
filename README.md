@@ -1,12 +1,12 @@
 # Supersheets — Google Sheets MCP Server
 
-Pandas-powered MCP server giving Claude Code full data science capabilities over Google Sheets. 35 tools: CRUD, Drive ops, pivot tables, GROUP BY, VLOOKUP, time series, outlier detection, charts, and more.
+Pandas-powered MCP server giving Claude Code full data science capabilities over Google Sheets. 37 tools: CRUD, Drive ops, pivot tables, GROUP BY, VLOOKUP, time series, outlier detection, charts, and more.
 
 **Two modes:**
 - **Hosted** — Deploy on Cloud Run with Google OAuth. Users sign in with their Google account.
 - **Local** — Run as stdio MCP server with a service account key.
 
-## Tools (35)
+## Tools (37)
 
 ### Core CRUD (8)
 | Tool | Description |
@@ -49,7 +49,7 @@ Pandas-powered MCP server giving Claude Code full data science capabilities over
 | `batch_update` | Raw Sheets API batchUpdate (full power) |
 | `add_chart` | Add chart overlay (column, bar, line, pie, scatter, etc.) |
 
-### Analytics & Transformation (14)
+### Analytics & Transformation (16)
 | Tool | Description |
 |---|---|
 | `describe_sheet` | Statistical summary — types, stats, distributions |
@@ -83,8 +83,8 @@ Store the client ID and secret in Secret Manager (Terraform handles this).
 
 ```bash
 # Build and push image
-docker build --platform linux/amd64 -t me-central1-docker.pkg.dev/amigo-poc/kiosk-proxy/sheets-mcp:v1 .
-docker push me-central1-docker.pkg.dev/amigo-poc/kiosk-proxy/sheets-mcp:v1
+docker build --platform linux/amd64 -t us-east1-docker.pkg.dev/amigo-poc/sheets-mcp/sheets-mcp:latest .
+docker push us-east1-docker.pkg.dev/amigo-poc/sheets-mcp/sheets-mcp:latest
 
 # Set OAuth secrets
 gcloud secrets versions add sheets-mcp-oauth-client-id --data-file=<(echo -n "YOUR_CLIENT_ID") --project=amigo-poc

@@ -12,7 +12,7 @@ Built with `FastMCP` + `gspread` + `pandas` + `numpy` + `google-api-python-clien
 ```
 google_sheets_mcp/
   __init__.py
-  server.py          # MCP tools (35 tools) + auth helpers
+  server.py          # MCP tools (37 tools) + auth helpers
   auth.py            # GoogleOAuthProvider (MCP OAuth wrapping Google)
   app.py             # Hosted entry point (SSE + OAuth + health check)
   config.py          # Pydantic settings (env vars)
@@ -30,7 +30,7 @@ Dockerfile           # Multi-stage, non-root user, health check
 - Multi-stage Dockerfile, non-root user, `PYTHONUNBUFFERED=1`
 - No `print()` — always `logger.info/warning/exception()`
 
-## Available MCP Tools (35)
+## Available MCP Tools (37)
 
 ### Core CRUD (8)
 | Tool | Purpose | Mutates? |
@@ -73,7 +73,7 @@ Dockerfile           # Multi-stage, non-root user, health check
 | `batch_update` | Raw Sheets API batchUpdate (full power) | **Yes** |
 | `add_chart` | Add chart overlay to a sheet | **Yes** |
 
-### Analytics (14)
+### Analytics (16)
 | Tool | Purpose | Mutates? |
 |---|---|---|
 | `describe_sheet` | Statistical summary — types, stats, distributions | No |
@@ -128,8 +128,8 @@ All via env vars (see `config.py`):
 Managed via Terraform in `../poc-infra/sheets_mcp.tf`:
 ```bash
 # Build and push
-docker build --platform linux/amd64 -t me-central1-docker.pkg.dev/amigo-poc/kiosk-proxy/sheets-mcp:v1 .
-docker push me-central1-docker.pkg.dev/amigo-poc/kiosk-proxy/sheets-mcp:v1
+docker build --platform linux/amd64 -t us-east1-docker.pkg.dev/amigo-poc/sheets-mcp/sheets-mcp:latest .
+docker push us-east1-docker.pkg.dev/amigo-poc/sheets-mcp/sheets-mcp:latest
 
 # Deploy
 cd ../poc-infra && terraform apply
