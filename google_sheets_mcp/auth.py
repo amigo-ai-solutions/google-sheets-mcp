@@ -22,7 +22,7 @@ from mcp.server.auth.provider import (
     RefreshToken,
     RegistrationError,
     TokenError,
-    construct_redirect_url,
+    construct_redirect_uri,
 )
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from starlette.requests import Request
@@ -350,7 +350,7 @@ class GoogleOAuthProvider:
         }
 
         # Redirect to Claude Code's redirect_uri
-        redirect_uri = construct_redirect_url(
+        redirect_uri = construct_redirect_uri(
             pending["redirect_uri"],
             code=our_code,
             state=pending.get("state"),

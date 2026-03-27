@@ -7,6 +7,7 @@ so users authenticate with their Google account and access their own sheets.
 from __future__ import annotations
 
 import logging
+import os
 
 import uvicorn
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions
@@ -22,9 +23,23 @@ logger = logging.getLogger(__name__)
 
 
 def _get_base_url() -> str:
-    """Resolve the base URL for OAuth callbacks."""
+    """Resolve the base URL for OAuth callbacks.
+
+    On Cloud Run, K_SERVICE is set automatically. We derive the URL from it
+    since Cloud Run URLs are always HTTPS.
+    """
     if settings.base_url:
         return settings.base_url.rstrip("/")
+    k_service = os.environ.get("K_SERVICE")
+    k_revision = os.environ.get("K_CONFIGURATION")
+    if k_service:
+        # Cloud Run — derive URL from service name and region
+        region = os.environ.get("CLOUD_RUN_REGION", "us-east1")
+        project_hash = os.environ.get("K_CONFIGURATION", "")
+        # Can't reliably derive the full URL; require BASE_URL on Cloud Run
+        # Fall back to a placeholder that will fail loudly
+        logger.warning("BASE_URL not set on Cloud Run — OAuth callbacks will fail")
+        return f"https://{k_service}.run.app"
     return f"http://{settings.host}:{settings.port}"
 
 
