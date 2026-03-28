@@ -135,15 +135,18 @@ All via env vars (see `config.py`):
 ## Deployment
 
 ### Cloud Run (hosted mode)
-Managed via Terraform in `../poc-infra/sheets_mcp.tf`:
+Managed via Terraform in `../poc-infra/services/sheets-mcp/`:
 ```bash
-# Build and push
-docker build --platform linux/amd64 -t us-east1-docker.pkg.dev/amigo-poc/sheets-mcp/sheets-mcp:latest .
-docker push us-east1-docker.pkg.dev/amigo-poc/sheets-mcp/sheets-mcp:latest
+# Build and push (use versioned tags, not :latest)
+docker build --platform linux/amd64 -t us-east1-docker.pkg.dev/amigo-poc/sheets-mcp/sheets-mcp:vNN .
+docker push us-east1-docker.pkg.dev/amigo-poc/sheets-mcp/sheets-mcp:vNN
 
-# Deploy — must use gcloud to force new image pull (terraform won't detect :latest changes)
+# Deploy via Terraform (update sheets_mcp_image in variables.tf)
+cd ../poc-infra && terraform apply
+
+# Or force new image pull without Terraform:
 gcloud run services update sheets-mcp --project=amigo-poc --region=us-east1 \
-  --image=us-east1-docker.pkg.dev/amigo-poc/sheets-mcp/sheets-mcp:latest
+  --image=us-east1-docker.pkg.dev/amigo-poc/sheets-mcp/sheets-mcp:vNN
 ```
 
 ### User config (Claude Code)
