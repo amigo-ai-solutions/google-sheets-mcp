@@ -12,7 +12,7 @@ Built with `FastMCP` + `gspread` + `pandas` + `numpy` + `google-api-python-clien
 ```
 google_sheets_mcp/
   __init__.py
-  server.py          # MCP tools (37 tools) + auth helpers
+  server.py          # MCP tools (41 tools) + auth helpers
   auth.py            # GoogleOAuthProvider (MCP OAuth wrapping Google)
   app.py             # Hosted entry point (SSE + OAuth + health check)
   config.py          # Pydantic settings (env vars)
@@ -30,9 +30,9 @@ Dockerfile           # Multi-stage, non-root user, health check
 - Multi-stage Dockerfile, non-root user, `PYTHONUNBUFFERED=1`
 - No `print()` — always `logger.info/warning/exception()`
 
-## Available MCP Tools (37)
+## Available MCP Tools (41)
 
-### Core CRUD (8)
+### Core CRUD (9)
 | Tool | Purpose | Mutates? |
 |---|---|---|
 | `list_spreadsheets` | List all accessible spreadsheets (optionally by Drive folder) | No |
@@ -43,13 +43,17 @@ Dockerfile           # Multi-stage, non-root user, health check
 | `batch_update_cells` | Update multiple ranges at once | **Yes** |
 | `append_rows` | Append rows to end | **Yes** |
 | `search_cells` | Search across one or all sheets | No |
+| `clear_range` | Truly clear cells (required before ARRAYFORMULA) | **Yes** |
+| `apply_formula` | Apply formula to column (ARRAYFORMULA or per-row) | **Yes** |
 
-### Structure (5)
+### Structure (7)
 | Tool | Purpose | Mutates? |
 |---|---|---|
 | `create_worksheet` | Add a new tab | **Yes** |
 | `add_rows` | Insert rows at position | **Yes** |
 | `add_columns` | Insert columns at position | **Yes** |
+| `delete_rows` | Delete rows from a position | **Yes** |
+| `delete_columns` | Delete columns from a position | **Yes** |
 | `copy_sheet` | Copy worksheet across spreadsheets | **Yes** |
 | `rename_sheet` | Rename a worksheet tab | **Yes** |
 
@@ -131,8 +135,9 @@ Managed via Terraform in `../poc-infra/sheets_mcp.tf`:
 docker build --platform linux/amd64 -t us-east1-docker.pkg.dev/amigo-poc/sheets-mcp/sheets-mcp:latest .
 docker push us-east1-docker.pkg.dev/amigo-poc/sheets-mcp/sheets-mcp:latest
 
-# Deploy
-cd ../poc-infra && terraform apply
+# Deploy — must use gcloud to force new image pull (terraform won't detect :latest changes)
+gcloud run services update sheets-mcp --project=amigo-poc --region=us-east1 \
+  --image=us-east1-docker.pkg.dev/amigo-poc/sheets-mcp/sheets-mcp:latest
 ```
 
 ### User config (Claude Code)
@@ -164,12 +169,22 @@ docker run -e GOOGLE_OAUTH_CLIENT_ID=... -e GOOGLE_OAUTH_CLIENT_SECRET=... -p 80
 
 ## Adding a New Tool
 1. Add a `@mcp.tool()` function in `server.py`
-2. For read-only analytics: `_sheet_to_df()` → compute → `_df_to_json()`
-3. For write-back: compute → `_df_to_sheet()` → return status JSON
-4. For Drive/raw API: use `_get_drive_service()` / `_get_sheets_service()`
-5. All return values must be JSON strings
-6. Add `from __future__ import annotations` if creating a new file
-7. Update tool tables above and in `README.md`
+2. Use `_open_spreadsheet(id)` (cached) instead of `_get_client().open_by_key(id)`
+3. For read-only analytics: `_sheet_to_df()` → compute → `_df_to_json()`
+4. For write-back: compute → `_df_to_sheet()` → return via `_json_ok()`
+5. For Drive/raw API: use `_get_drive_service()` / `_get_sheets_service()` (cached)
+6. Return via `_json_ok()` or `_json_out()` — never `json.dumps(..., indent=2)`
+7. Add `from __future__ import annotations` if creating a new file
+8. Update tool tables above and in `README.md`
+
+## Performance Architecture
+- **LRU caches** for gspread client, Sheets/Drive services, and spreadsheet objects
+  - Keyed by MCP access token (per-user isolation in hosted mode)
+  - Bounded: 32 clients, 64 spreadsheets
+  - Call `invalidate_user_cache(token)` from auth.py on token revocation
+- **`_open_spreadsheet()`** replaces all `gc.open_by_key()` calls — cached metadata
+- **Compact JSON** via `_json_ok()` / `_json_out()` — no indent, minimal separators
+- **gspread 6.x**: arg order is `update(values, range_name)`, use `raw=False` for formulas
 
 ## Conventions
 - All tool return values are JSON strings — MCP expects string content
@@ -178,4 +193,5 @@ docker run -e GOOGLE_OAUTH_CLIENT_ID=... -e GOOGLE_OAUTH_CLIENT_SECRET=... -p 80
 - `_df_to_json()` caps at 500 rows for context safety
 - Numeric columns auto-detected when reading sheets
 - Error handling left to gspread/pandas/MCP framework
+- `mcp` library pinned to `<1.26.0` (SSE init regression in 1.26.0)
 - Python 3.12+, ruff-clean, typed
