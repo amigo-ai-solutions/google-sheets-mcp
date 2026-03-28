@@ -1078,7 +1078,7 @@ def search_spreadsheets(
     service = _get_drive_service()
     q = (
         f"mimeType='application/vnd.google-apps.spreadsheet' "
-        f"and name contains '{query}' and trashed=false"
+        f"and name contains '{query.replace(chr(39), chr(92) + chr(39))}' and trashed=false"
     )
     resp = (
         service.files()

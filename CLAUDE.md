@@ -30,9 +30,9 @@ Dockerfile           # Multi-stage, non-root user, health check
 - Multi-stage Dockerfile, non-root user, `PYTHONUNBUFFERED=1`
 - No `print()` — always `logger.info/warning/exception()`
 
-## Available MCP Tools (41)
+## Available MCP Tools (43)
 
-### Core CRUD (9)
+### Core CRUD (10)
 | Tool | Purpose | Mutates? |
 |---|---|---|
 | `list_spreadsheets` | List all accessible spreadsheets (optionally by Drive folder) | No |
@@ -71,11 +71,17 @@ Dockerfile           # Multi-stage, non-root user, health check
 | `search_spreadsheets` | Search Drive by name | No |
 | `list_folders` | List Drive folders | No |
 
-### Raw API (2)
+### Formatting (3)
+| Tool | Purpose | Mutates? |
+|---|---|---|
+| `format_range` | Number formats, bold, colors, alignment, borders | **Yes** |
+| `freeze_panes` | Freeze header rows/columns for scrolling | **Yes** |
+| `add_chart` | Add chart overlay to a sheet | **Yes** |
+
+### Raw API (1)
 | Tool | Purpose | Mutates? |
 |---|---|---|
 | `batch_update` | Raw Sheets API batchUpdate (full power) | **Yes** |
-| `add_chart` | Add chart overlay to a sheet | **Yes** |
 
 ### Analytics (16)
 | Tool | Purpose | Mutates? |
