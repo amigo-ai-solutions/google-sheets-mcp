@@ -649,6 +649,7 @@ def apply_formula(
     worksheet: str,
     column: str,
     formula: str,
+    header: str | None = None,
     start_row: int = 2,
     use_arrayformula: bool = True,
 ) -> str:
@@ -667,6 +668,7 @@ def apply_formula(
         worksheet: Worksheet name.
         column: Target column letter (e.g. "K") or header name.
         formula: The formula to apply. Must start with "=".
+        header: Optional header name to write in row 1 of the target column.
         start_row: First data row (default: 2, after header).
         use_arrayformula: Use single ARRAYFORMULA (default: True).
     """
@@ -680,6 +682,10 @@ def apply_formula(
         if column in headers:
             col_idx = headers.index(column) + 1
             col_letter = rowcol_to_a1(1, col_idx)[:-1]
+
+    # Write header if provided
+    if header:
+        ws.update([[header]], f"{col_letter}1", raw=False)
 
     if use_arrayformula:
         # Clear target range first (ARRAYFORMULA needs empty cells)
@@ -712,6 +718,177 @@ def apply_formula(
             worksheet=worksheet, column=col_letter, mode="per_row",
             rows_written=num_rows,
         )
+
+
+@mcp.tool()
+def format_range(
+    spreadsheet_id: str,
+    worksheet: str,
+    range: str,
+    number_format: str | None = None,
+    bold: bool | None = None,
+    italic: bool | None = None,
+    font_size: int | None = None,
+    bg_color: str | None = None,
+    text_color: str | None = None,
+    horizontal_alignment: str | None = None,
+    borders: bool = False,
+) -> str:
+    """Format cells — number formats, fonts, colors, alignment, borders.
+
+    Args:
+        spreadsheet_id: The spreadsheet ID.
+        worksheet: Worksheet name.
+        range: A1 notation range (e.g. "A1:F1" for headers, "B2:B100" for data).
+        number_format: Format pattern. Common patterns:
+            "$#,##0.00" (currency), "#,##0" (integer with commas),
+            "0.0%" (percentage), "yyyy-mm-dd" (date), "0.00" (decimal).
+        bold: Bold text.
+        italic: Italic text.
+        font_size: Font size in points.
+        bg_color: Background color as hex (e.g. "#4285F4", "#F4B400").
+        text_color: Text color as hex (e.g. "#FFFFFF", "#000000").
+        horizontal_alignment: "LEFT", "CENTER", or "RIGHT".
+        borders: Add thin borders to all cells in range.
+    """
+    sh = _open_spreadsheet(spreadsheet_id)
+    ws = sh.worksheet(worksheet)
+    sheet_id = ws.id
+
+    # Parse A1 range to grid coordinates
+    range_obj = ws.range(range)
+    start_row = range_obj[0].row - 1
+    end_row = range_obj[-1].row
+    start_col = range_obj[0].col - 1
+    end_col = range_obj[-1].col
+    grid_range = {
+        "sheetId": sheet_id,
+        "startRowIndex": start_row,
+        "endRowIndex": end_row,
+        "startColumnIndex": start_col,
+        "endColumnIndex": end_col,
+    }
+
+    requests = []
+    fields = []
+
+    # Build cell format
+    cell_format: dict = {}
+
+    if number_format:
+        # Map common shortcuts
+        fmt_type = "NUMBER"
+        if "$" in number_format:
+            fmt_type = "CURRENCY"
+        elif "%" in number_format:
+            fmt_type = "PERCENT"
+        elif any(c in number_format for c in ("yy", "mm", "dd")):
+            fmt_type = "DATE"
+        cell_format["numberFormat"] = {
+            "type": fmt_type, "pattern": number_format,
+        }
+        fields.append("userEnteredFormat.numberFormat")
+
+    if bold is not None or italic is not None or font_size is not None:
+        text_fmt: dict = {}
+        if bold is not None:
+            text_fmt["bold"] = bold
+        if italic is not None:
+            text_fmt["italic"] = italic
+        if font_size is not None:
+            text_fmt["fontSize"] = font_size
+        cell_format["textFormat"] = text_fmt
+        fields.append("userEnteredFormat.textFormat")
+
+    def _hex_to_color(hex_str: str) -> dict:
+        h = hex_str.lstrip("#")
+        return {
+            "red": int(h[0:2], 16) / 255,
+            "green": int(h[2:4], 16) / 255,
+            "blue": int(h[4:6], 16) / 255,
+        }
+
+    if bg_color:
+        cell_format["backgroundColor"] = _hex_to_color(bg_color)
+        fields.append("userEnteredFormat.backgroundColor")
+
+    if text_color:
+        cell_format.setdefault("textFormat", {})["foregroundColor"] = (
+            _hex_to_color(text_color)
+        )
+        if "userEnteredFormat.textFormat" not in fields:
+            fields.append("userEnteredFormat.textFormat")
+
+    if horizontal_alignment:
+        cell_format["horizontalAlignment"] = horizontal_alignment.upper()
+        fields.append("userEnteredFormat.horizontalAlignment")
+
+    if cell_format:
+        requests.append({
+            "repeatCell": {
+                "range": grid_range,
+                "cell": {"userEnteredFormat": cell_format},
+                "fields": ",".join(fields),
+            }
+        })
+
+    if borders:
+        border_style = {"style": "SOLID", "width": 1}
+        requests.append({
+            "updateBorders": {
+                "range": grid_range,
+                "top": border_style,
+                "bottom": border_style,
+                "left": border_style,
+                "right": border_style,
+                "innerHorizontal": border_style,
+                "innerVertical": border_style,
+            }
+        })
+
+    if not requests:
+        return _json_ok(worksheet=worksheet, range=range, note="no formatting applied")
+
+    service = _get_sheets_service()
+    service.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body={"requests": requests},
+    ).execute()
+    return _json_ok(worksheet=worksheet, range=range, formats_applied=len(requests))
+
+
+@mcp.tool()
+def freeze_panes(
+    spreadsheet_id: str,
+    worksheet: str,
+    rows: int = 1,
+    columns: int = 0,
+) -> str:
+    """Freeze header rows and/or columns so they stay visible while scrolling.
+
+    Args:
+        spreadsheet_id: The spreadsheet ID.
+        worksheet: Worksheet name.
+        rows: Number of rows to freeze from top (default: 1 for header).
+        columns: Number of columns to freeze from left (default: 0).
+    """
+    sh = _open_spreadsheet(spreadsheet_id)
+    ws = sh.worksheet(worksheet)
+    service = _get_sheets_service()
+    service.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body={"requests": [{"updateSheetProperties": {
+            "properties": {
+                "sheetId": ws.id,
+                "gridProperties": {
+                    "frozenRowCount": rows,
+                    "frozenColumnCount": columns,
+                },
+            },
+            "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
+        }}]},
+    ).execute()
+    return _json_ok(worksheet=worksheet, frozen_rows=rows, frozen_columns=columns)
 
 
 @mcp.tool()
